@@ -137,32 +137,10 @@ def predict_price(user: UserInput):
 def health():
     return {"status": "ok"}
 
-
-# =============================
-# FONCTION POUR OUVRIR LE NAVIGATEUR
-# =============================
-def open_browser():
-    """Ouvre le navigateur après un délai"""
-    time.sleep(1.5)  # Attendre que le serveur soit prêt
-    webbrowser.open("http://127.0.0.1:8000")
-
-
-# =============================
-# LANCEMENT AUTO DU NAVIGATEUR
-# =============================
-@app.on_event("startup")
-async def startup_event():
-    """Événement au démarrage de l'application"""
-    print(" Application démarrée!")
-    print(" Ouverture automatique du navigateur...")
-    # Ouvrir le navigateur dans un thread séparé
-    threading.Thread(target=open_browser, daemon=True).start()
-
-
 # =============================
 # POINT D'ENTRÉE PRINCIPAL
 # =============================
 if __name__ == "__main__":
     import uvicorn
     print(" Démarrage du serveur d'estimation immobilière...")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
