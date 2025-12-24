@@ -2,13 +2,11 @@ pipeline {
     agent any
 
     environment {
-        // Variables à adapter
         DOCKER_USER = 'sgmarwa'
         IMAGE_NAME = 'immobilier-app'
         AZURE_VM_IP = '20.251.192.87'
-        // IDs des credentials enregistrés dans Jenkins
+        // Appel des identifiants Docker Hub
         DOCKER_HUB_CREDS = credentials('docker-hub-login')
-        SSH_KEY_ID = credentials('azure-vm-ssh-key')
     }
 
     stages {
@@ -19,6 +17,12 @@ pipeline {
         }
 
         stage('2. Terraform - Infra Check') {
+            environment {
+                ARM_CLIENT_ID       = credentials('AZURE_CLIENT_ID')
+                ARM_CLIENT_SECRET   = credentials('AZURE_CLIENT_SECRET')
+                ARM_SUBSCRIPTION_ID = credentials('AZURE_SUBSCRIPTION_ID')
+                ARM_TENANT_ID       = credentials('AZURE_TENANT_ID')
+            }
             steps {
                 dir('terraform') {
                     bat 'terraform init'
@@ -31,6 +35,7 @@ pipeline {
             steps {
                 script {
                     def imageTag = "${DOCKER_USER}/${IMAGE_NAME}:${env.BUILD_NUMBER}"
+                    // Construction et envoi de l'image
                     bat "docker build -t ${imageTag} ."
                     bat "echo ${DOCKER_HUB_CREDS_PSW} | docker login -u ${DOCKER_HUB_CREDS_USR} --password-stdin"
                     bat "docker push ${imageTag}"
@@ -42,8 +47,13 @@ pipeline {
 
         stage('4. Ansible - Deploy') {
             steps {
-                dir('ansible') {
-                    bat "ansible-playbook -i inventory.ini deploy.yml --extra-vars 'docker_image_tag=${env.BUILD_NUMBER}'"
+                // sshagent permet de gérer la clé privée en mémoire de manière sécurisée
+                sshagent(['azure-vm-ssh-key']) {
+                    dir('ansible') {
+                        // Utilisation de 'sh' car Ansible nécessite généralement Git Bash ou WSL sur Windows
+                        // Si vous n'avez pas WSL, il faudra exécuter cette commande depuis Git Bash
+                        sh "ansible-playbook -i inventory.ini deploy.yml --extra-vars 'docker_image_tag=${env.BUILD_NUMBER}'"
+                    }
                 }
             }
         }
@@ -54,7 +64,7 @@ pipeline {
             echo "Félicitations ! L'application est en ligne sur http://${AZURE_VM_IP}:8000"
         }
         failure {
-            echo "Le pipeline a échoué. Vérifiez les logs de l'étape correspondante."
+            echo "Le pipeline a échoué. Vérifiez les logs (Console Output)."
         }
     }
 }
