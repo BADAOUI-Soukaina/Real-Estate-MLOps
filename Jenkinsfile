@@ -56,7 +56,7 @@ pipeline {
                         */
                         bat """
                         wsl ansible-playbook -i inventory.ini deploy.yml \
-                        -u azureuser \
+                        -u azure-vm-ssh-key \
                         --private-key=\$(wslpath '%SSH_KEY%') \
                         --extra-vars "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
                         """
