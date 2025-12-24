@@ -21,8 +21,8 @@ pipeline {
         stage('2. Terraform - Infra Check') {
             steps {
                 dir('terraform') {
-                    sh 'terraform init'
-                    sh 'terraform apply -auto-approve'
+                    bat 'terraform init'
+                    bat 'terraform apply -auto-approve'
                 }
             }
         }
@@ -31,11 +31,11 @@ pipeline {
             steps {
                 script {
                     def imageTag = "${DOCKER_USER}/${IMAGE_NAME}:${env.BUILD_NUMBER}"
-                    sh "docker build -t ${imageTag} ."
-                    sh "echo ${DOCKER_HUB_CREDS_PSW} | docker login -u ${DOCKER_HUB_CREDS_USR} --password-stdin"
-                    sh "docker push ${imageTag}"
-                    sh "docker tag ${imageTag} ${DOCKER_USER}/${IMAGE_NAME}:latest"
-                    sh "docker push ${DOCKER_USER}/${IMAGE_NAME}:latest"
+                    bat "docker build -t ${imageTag} ."
+                    bat "echo ${DOCKER_HUB_CREDS_PSW} | docker login -u ${DOCKER_HUB_CREDS_USR} --password-stdin"
+                    bat "docker push ${imageTag}"
+                    bat "docker tag ${imageTag} ${DOCKER_USER}/${IMAGE_NAME}:latest"
+                    bat "docker push ${DOCKER_USER}/${IMAGE_NAME}:latest"
                 }
             }
         }
@@ -43,7 +43,7 @@ pipeline {
         stage('4. Ansible - Deploy') {
             steps {
                 dir('ansible') {
-                    sh "ansible-playbook -i inventory.ini deploy.yml --extra-vars 'docker_image_tag=${env.BUILD_NUMBER}'"
+                    bat "ansible-playbook -i inventory.ini deploy.yml --extra-vars 'docker_image_tag=${env.BUILD_NUMBER}'"
                 }
             }
         }
