@@ -23,7 +23,7 @@ pipeline {
             }
         }
         
-        stage(' Vérifier les prerequis') {
+        stage(' Verifier les prerequis') {
             steps {
                 echo ' Verification des outils...'
                 script {
