@@ -131,11 +131,11 @@
       debug:
         msg: |
           
-          🎉 Déploiement réussi !
+          Déploiement réussi !
           
-          📍 URL de l'application : http://{{ external_ip.stdout }}
+          URL de l'application : http://{{ external_ip.stdout }}
           
-          📋 Commandes utiles :
+          Commandes utiles :
           - Voir les pods : kubectl get pods -n immobilier-app
           - Voir les logs : kubectl logs -l app=immobilier -n immobilier-app
           - Voir le service : kubectl get svc -n immobilier-app

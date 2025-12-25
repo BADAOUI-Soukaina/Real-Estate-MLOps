@@ -310,7 +310,7 @@ pipeline {
                             for i in {1..12}; do
                                 EXTERNAL_IP=\$(kubectl get svc immobilier-service -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
                                 if [ ! -z "\$EXTERNAL_IP" ]; then
-                                    echo "🌐 Application accessible sur: http://\${EXTERNAL_IP}"
+                                    echo "  Application accessible sur: http://\${EXTERNAL_IP}"
                                     break
                                 fi
                                 echo "Attente IP externe... (tentative \$i/12)"
@@ -318,7 +318,7 @@ pipeline {
                             done
                             
                             if [ -z "\$EXTERNAL_IP" ]; then
-                                echo "⚠️ IP externe pas encore disponible. Verifiez plus tard avec:"
+                                echo " IP externe pas encore disponible. Verifiez plus tard avec:"
                                 echo "kubectl get svc -n ${K8S_NAMESPACE}"
                             fi
                         """
@@ -350,7 +350,7 @@ pipeline {
                                     ).trim()
                                     
                                     if (externalIp && externalIp != "") {
-                                        echo "🌐 Application accessible sur: http://${externalIp}"
+                                        echo "Application accessible sur: http://${externalIp}"
                                         break
                                     }
                                 } catch (Exception e) {
@@ -363,7 +363,7 @@ pipeline {
                             }
                             
                             if (!externalIp || externalIp == "") {
-                                echo "⚠️ IP externe pas encore disponible. Verifiez plus tard avec:"
+                                echo " IP externe pas encore disponible. Verifiez plus tard avec:"
                                 echo "kubectl get svc -n ${K8S_NAMESPACE}"
                             }
                         }
@@ -382,10 +382,10 @@ pipeline {
                     sh '''
                         echo ""
                         echo "╔════════════════════════════════════════╗"
-                        echo "║   🎉 DÉPLOIEMENT RÉUSSI ! 🎉          ║"
+                        echo "║    DÉPLOIEMENT RÉUSSI !          ║"
                         echo "╚════════════════════════════════════════╝"
                         echo ""
-                        echo "📊 Résumé:"
+                        echo " Résumé:"
                         echo "  - Image Docker: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
                         echo "  - Cluster AKS: ${AKS_CLUSTER}"
                         echo "  - Namespace: ${K8S_NAMESPACE}"
