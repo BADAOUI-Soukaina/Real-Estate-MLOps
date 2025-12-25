@@ -48,7 +48,7 @@ pipeline {
         stage('4. Ansible - Deploy') {
             steps {
                 // Utilisation de la clé SSH via le plugin déjà installé
-                withCredentials([sshUserPrivateKey(credentialsId: 'azureuser', keyFileVariable: 'SSH_KEY')]) {
+                withCredentials([sshUserPrivateKey(credentialsId: 'azure-vm-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
                         /* Explication technique :
                            - On lance un container Docker qui contient Ansible (willhallonline/ansible).
@@ -62,7 +62,7 @@ pipeline {
                         -v "%SSH_KEY%":/root/.ssh/id_rsa ^
                         willhallonline/ansible:latest ^
                         ansible-playbook -i /ansible/inventory.ini /ansible/deploy.yml ^
-                        -u azureuser ^
+                        -u azure-vm-ssh-key ^
                         --private-key /root/.ssh/id_rsa ^
                         --extra-vars "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
                         """
