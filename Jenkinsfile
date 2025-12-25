@@ -5,7 +5,7 @@ pipeline {
         DOCKER_USER = 'sgmarwa'
         IMAGE_NAME = 'immobilier-app'
         AZURE_VM_IP = '20.251.192.87'
-        // Identifiants Docker Hub
+        // Identifiants Docker Hub (Assurez-vous que ce credential existe dans Jenkins)
         DOCKER_HUB_CREDS = credentials('docker-hub-login')
     }
 
@@ -25,6 +25,7 @@ pipeline {
             }
             steps {
                 dir('terraform') {
+                    // Utilisation de bat pour Terraform sur Windows
                     bat 'terraform init'
                     bat 'terraform apply -auto-approve'
                 }
@@ -47,17 +48,15 @@ pipeline {
 
         stage('4. Ansible - Deploy') {
             steps {
-                // Utilisation de l'ID 'azureuser' créé dans Jenkins
-                withCredentials([sshUserPrivateKey(credentialsId: 'azure-vm-ssh-key', keyFileVariable: 'SSH_KEY')]) {
+                // Utilisation du plugin SSH Agent déjà actif dans votre Jenkins
+                withCredentials([sshUserPrivateKey(credentialsId: 'azureuser', keyFileVariable: 'SSH_KEY')]) {
                     script {
-                        /* Exécution via WSL car Ansible n'est pas natif Windows.
-                           On utilise wslpath pour convertir le chemin de la clé Jenkins (Windows) 
-                           en chemin compréhensible par Linux.
-                        */
+                        // IMPORTANT : On retire 'wsl' car le compte système ne peut pas l'utiliser.
+                        // On utilise directement ansible-playbook installé sur Windows.
                         bat """
-                        wsl ansible-playbook -i inventory.ini deploy.yml \
-                        -u azure-vm-ssh-key \
-                        --private-key=\$(wslpath '%SSH_KEY%') \
+                        ansible-playbook -i inventory.ini deploy.yml \
+                        -u azureuser \
+                        --private-key=%SSH_KEY% \
                         --extra-vars "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
                         """
                     }
