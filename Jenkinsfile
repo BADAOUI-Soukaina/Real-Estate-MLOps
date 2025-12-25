@@ -41,17 +41,47 @@ pipeline {
             }
         }
         
-        stage(' Build Docker Image') {
+        stage(' Deploy to Kubernetes') {
             steps {
-                echo ' Construction de l\'image Docker...'
+                echo ' Déploiement sur Kubernetes AKS...'
                 script {
-                    dir('app') {
+                    withCredentials([
+                        string(credentialsId: 'azure-sp-app-id', variable: 'AZURE_APP_ID'),
+                        string(credentialsId: 'azure-sp-password', variable: 'AZURE_PASSWORD'),
+                        string(credentialsId: 'azure-sp-tenant', variable: 'AZURE_TENANT')
+                    ]) {
                         if (isUnix()) {
-                            sh "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                            sh "docker build -t ${DOCKER_IMAGE}:latest ."
+                            sh """
+                                # Login avec Service Principal
+                                az login --service-principal -u \${AZURE_APP_ID} -p \${AZURE_PASSWORD} --tenant \${AZURE_TENANT}
+                                
+                                # Récupérer credentials AKS
+                                az aks get-credentials --resource-group ${RESOURCE_GROUP} --name ${AKS_CLUSTER} --overwrite-existing
+                                
+                                # Vérifier connexion
+                                kubectl get nodes
+                                
+                                # Déployer
+                                kubectl set image deployment/${DEPLOYMENT_NAME} immobilier-container=${DOCKER_IMAGE}:${BUILD_NUMBER} -n ${K8S_NAMESPACE}
+                                kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${K8S_NAMESPACE} --timeout=5m
+                            """
                         } else {
-                            bat "docker build -t ${DOCKER_IMAGE}:${BUILD_NUMBER} ."
-                            bat "docker build -t ${DOCKER_IMAGE}:latest ."
+                            bat """
+                                echo Connexion Azure...
+                                az login --service-principal -u %AZURE_APP_ID% -p %AZURE_PASSWORD% --tenant %AZURE_TENANT%
+                                
+                                echo Récupération des credentials AKS...
+                                az aks get-credentials --resource-group ${RESOURCE_GROUP} --name ${AKS_CLUSTER} --overwrite-existing
+                                
+                                echo Vérification de la connexion...
+                                kubectl get nodes
+                                
+                                echo Mise à jour du déploiement...
+                                kubectl set image deployment/${DEPLOYMENT_NAME} immobilier-container=${DOCKER_IMAGE}:${BUILD_NUMBER} -n ${K8S_NAMESPACE}
+                                
+                                echo Attente du rollout...
+                                kubectl rollout status deployment/${DEPLOYMENT_NAME} -n ${K8S_NAMESPACE} --timeout=5m
+                            """
                         }
                     }
                 }
