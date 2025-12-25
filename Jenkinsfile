@@ -45,19 +45,13 @@ pipeline {
             }
         }
 
-        stage('4. Ansible - Deploy') {
+       stage('4. Ansible - Deploy') {
             steps {
-                // Utilisation de la clé SSH via le plugin déjà installé
                 withCredentials([sshUserPrivateKey(credentialsId: 'azure-vm-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
-                        /* Explication technique :
-                           - On lance un container Docker qui contient Ansible (willhallonline/ansible).
-                           - On monte le dossier Jenkins (%WORKSPACE%) dans le container.
-                           - On monte la clé SSH temporaire (%SSH_KEY%) dans le container.
-                           - Cela contourne les problèmes de droits Windows et de mot de passe oublié.
-                        */
                         bat """
                         docker run --rm ^
+                        --network host ^
                         -v "%WORKSPACE%":/ansible ^
                         -v "%SSH_KEY%":/root/.ssh/id_rsa ^
                         willhallonline/ansible:latest ^
