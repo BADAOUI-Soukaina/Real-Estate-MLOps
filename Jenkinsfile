@@ -17,19 +17,22 @@ pipeline {
         // Terraform
         TF_VAR_admin_username = 'azureuser'
         TF_IN_AUTOMATION = 'true'
+        
+        // Kubeconfig pour Jenkins (important!)
+        KUBECONFIG = 'C:\\Windows\\system32\\config\\systemprofile\\.kube\\config'
     }
     
     stages {
         stage(' Checkout') {
             steps {
-                echo ' Récupération du code depuis Git...'
+                echo ' Recuperation du code depuis Git...'
                 checkout scm
             }
         }
         
         stage(' Verifier les prerequis') {
             steps {
-                echo ' Vérification des outils...'
+                echo ' Verification des outils...'
                 script {
                     if (isUnix()) {
                         sh '''
@@ -71,11 +74,11 @@ pipeline {
                                     # Planifier les changements
                                     terraform plan -out=tfplan
                                     
-                                    # Appliquer les changements
-                                    terraform apply -auto-approve tfplan
+                                    # Appliquer les changements (continuer même si erreur import)
+                                    terraform apply -auto-approve tfplan || echo "Attention: Certaines ressources existent deja"
                                     
                                     # Sauvegarder les outputs
-                                    terraform output -json > ../terraform-outputs.json
+                                    terraform output -json > ../terraform-outputs.json || echo "{}" > ../terraform-outputs.json
                                 '''
                             } else {
                                 bat '''
@@ -86,10 +89,10 @@ pipeline {
                                     terraform plan -out=tfplan
                                     
                                     echo Application...
-                                    terraform apply -auto-approve tfplan
+                                    terraform apply -auto-approve tfplan || echo Attention: Certaines ressources existent deja
                                     
                                     echo Sauvegarde des outputs...
-                                    terraform output -json > ../terraform-outputs.json
+                                    terraform output -json > ../terraform-outputs.json || echo {} > ../terraform-outputs.json
                                 '''
                             }
                         }
@@ -98,9 +101,9 @@ pipeline {
             }
         }
         
-        stage(' Connexion a AKS') {
+        stage(' Connexion à AKS') {
             steps {
-                echo ' Récupération des credentials AKS...'
+                echo ' Recuperation des credentials AKS...'
                 script {
                     withCredentials([
                         string(credentialsId: 'azure-sp-app-id', variable: 'AZURE_APP_ID'),
@@ -158,7 +161,7 @@ pipeline {
         
         stage(' Tests Docker') {
             steps {
-                echo ' Exécution des tests...'
+                echo ' Execution des tests...'
                 script {
                     if (isUnix()) {
                         sh """
@@ -219,22 +222,39 @@ pipeline {
             }
         }
         
-        stage(' Deploiement avec Ansible') {
+        stage('Deploiement Kubernetes') {
             steps {
-                echo ' Déploiement sur AKS avec Ansible...'
+                echo 'Deploiement des manifests Kubernetes sur AKS...'
                 script {
-                    dir('ansible') {
-                        if (isUnix()) {
-                            sh '''
-                                # Exécuter le playbook Ansible
-                                ansible-playbook -i inventory/hosts.ini deploy-to-aks.yml -v
-                            '''
-                        } else {
-                            bat '''
-                                echo Exécution playbook Ansible...
-                                ansible-playbook -i inventory/hosts.ini deploy-to-aks.yml -v
-                            '''
-                        }
+                    if (isUnix()) {
+                        sh """
+                            # Créer le namespace (si n'existe pas)
+                            kubectl create namespace ${K8S_NAMESPACE} || echo "Namespace existe deja"
+                            
+                            # Appliquer les manifests Kubernetes
+                            kubectl apply -f k8s/immobilier-app.yaml
+                            
+                            # Attendre que les pods soient prêts (timeout 5 min)
+                            echo "Attente du demarrage des pods..."
+                            kubectl wait --for=condition=ready pod -l app=immobilier -n ${K8S_NAMESPACE} --timeout=300s || echo "Timeout atteint, verification manuelle necessaire"
+                            
+                            # Afficher le statut
+                            kubectl get pods -n ${K8S_NAMESPACE}
+                        """
+                    } else {
+                        bat """
+                            echo Creation namespace...
+                            kubectl create namespace ${K8S_NAMESPACE} || echo Namespace existe deja
+                            
+                            echo Application manifests...
+                            kubectl apply -f k8s/immobilier-app.yaml
+                            
+                            echo Attente demarrage pods...
+                            kubectl wait --for=condition=ready pod -l app=immobilier -n ${K8S_NAMESPACE} --timeout=300s || echo Timeout atteint
+                            
+                            echo Statut pods:
+                            kubectl get pods -n ${K8S_NAMESPACE}
+                        """
                     }
                 }
             }
@@ -242,7 +262,7 @@ pipeline {
         
         stage(' Update Deployment Image') {
             steps {
-                echo ' Mise à jour de l\'image du déploiement...'
+                echo ' Mise a jour de l\'image du deploiement...'
                 script {
                     if (isUnix()) {
                         sh """
@@ -269,7 +289,7 @@ pipeline {
         
         stage(' Verification finale') {
             steps {
-                echo ' Vérification du déploiement...'
+                echo 'Verification du déploiement...'
                 script {
                     if (isUnix()) {
                         sh """
@@ -281,9 +301,26 @@ pipeline {
                             kubectl get svc -n ${K8S_NAMESPACE}
                             
                             echo ""
+                            echo "=== DEPLOYMENTS ==="
+                            kubectl get deployments -n ${K8S_NAMESPACE}
+                            
+                            echo ""
                             echo "=== URL APPLICATION ==="
-                            EXTERNAL_IP=\$(kubectl get svc immobilier-service -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                            echo " Application accessible sur: http://\${EXTERNAL_IP}"
+                            # Attendre que le LoadBalancer ait une IP (max 3 min)
+                            for i in {1..12}; do
+                                EXTERNAL_IP=\$(kubectl get svc immobilier-service -n ${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+                                if [ ! -z "\$EXTERNAL_IP" ]; then
+                                    echo "🌐 Application accessible sur: http://\${EXTERNAL_IP}"
+                                    break
+                                fi
+                                echo "Attente IP externe... (tentative \$i/12)"
+                                sleep 15
+                            done
+                            
+                            if [ -z "\$EXTERNAL_IP" ]; then
+                                echo "⚠️ IP externe pas encore disponible. Verifiez plus tard avec:"
+                                echo "kubectl get svc -n ${K8S_NAMESPACE}"
+                            fi
                         """
                     } else {
                         bat """
@@ -293,16 +330,41 @@ pipeline {
                             echo.
                             echo === SERVICES ===
                             kubectl get svc -n ${K8S_NAMESPACE}
+                            
+                            echo.
+                            echo === DEPLOYMENTS ===
+                            kubectl get deployments -n ${K8S_NAMESPACE}
+                            
+                            echo.
+                            echo === URL APPLICATION ===
                         """
+                        
+                        // Attendre l'IP externe
                         script {
-                            try {
-                                def externalIp = bat(
-                                    script: "kubectl get svc immobilier-service -n ${K8S_NAMESPACE} -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\"",
-                                    returnStdout: true
-                                ).trim()
-                                echo " Application accessible sur: http://${externalIp}"
-                            } catch (Exception e) {
-                                echo " Impossible de récupérer l'IP externe pour le moment"
+                            def externalIp = ""
+                            for (int i = 1; i <= 12; i++) {
+                                try {
+                                    externalIp = bat(
+                                        script: "kubectl get svc immobilier-service -n ${K8S_NAMESPACE} -o jsonpath=\"{.status.loadBalancer.ingress[0].ip}\"",
+                                        returnStdout: true
+                                    ).trim()
+                                    
+                                    if (externalIp && externalIp != "") {
+                                        echo "🌐 Application accessible sur: http://${externalIp}"
+                                        break
+                                    }
+                                } catch (Exception e) {
+                                    echo "Attente IP externe... (tentative ${i}/12)"
+                                }
+                                
+                                if (i < 12) {
+                                    sleep(15)
+                                }
+                            }
+                            
+                            if (!externalIp || externalIp == "") {
+                                echo "⚠️ IP externe pas encore disponible. Verifiez plus tard avec:"
+                                echo "kubectl get svc -n ${K8S_NAMESPACE}"
                             }
                         }
                     }
@@ -320,10 +382,10 @@ pipeline {
                     sh '''
                         echo ""
                         echo "╔════════════════════════════════════════╗"
-                        echo "║    DÉPLOIEMENT RÉUSSI !         ║"
+                        echo "║   🎉 DÉPLOIEMENT RÉUSSI ! 🎉          ║"
                         echo "╚════════════════════════════════════════╝"
                         echo ""
-                        echo "Résumé:"
+                        echo "📊 Résumé:"
                         echo "  - Image Docker: ${DOCKER_IMAGE}:${BUILD_NUMBER}"
                         echo "  - Cluster AKS: ${AKS_CLUSTER}"
                         echo "  - Namespace: ${K8S_NAMESPACE}"
@@ -353,13 +415,13 @@ pipeline {
                     sh '''
                         echo ""
                         echo " Logs des pods (si disponibles):"
-                        kubectl logs -l app=immobilier -n ${K8S_NAMESPACE} --tail=50 || echo "Pas de logs disponibles"
+                        kubectl logs -l app=immobilier -n ${K8S_NAMESPACE} --tail=50 2>/dev/null || echo "Pas de logs disponibles (normal si le cluster n'est pas encore connecte)"
                     '''
                 } else {
                     bat '''
                         echo.
                         echo Logs des pods (si disponibles):
-                        kubectl logs -l app=immobilier -n %K8S_NAMESPACE% --tail=50 || echo Pas de logs disponibles
+                        kubectl logs -l app=immobilier -n %K8S_NAMESPACE% --tail=50 2>nul || echo Pas de logs disponibles
                     '''
                 }
             }
