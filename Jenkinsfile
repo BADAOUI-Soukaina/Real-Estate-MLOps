@@ -49,18 +49,19 @@ pipeline {
             steps {
                 withCredentials([sshUserPrivateKey(credentialsId: 'azure-vm-ssh-key', keyFileVariable: 'SSH_KEY')]) {
                     script {
+                        /* On lance le container en mode 'sh' pour :
+                           1. Créer le dossier .ssh
+                           2. Copier la clé montée (lecture seule) vers un fichier interne
+                           3. Appliquer chmod 600 (obligatoire pour SSH)
+                           4. Lancer le playbook
+                        */
                         bat """
                         docker run --rm ^
-                        --dns 8.8.8.8 ^
                         -v "%WORKSPACE%":/ansible ^
-                        -v "%SSH_KEY%":/root/.ssh/id_rsa ^
+                        -v "%SSH_KEY%":/tmp/id_rsa_tmp ^
                         willhallonline/ansible:latest ^
-                        ansible-playbook -i /ansible/ansible/inventory.ini /ansible/ansible/deploy.yml ^
-                        -u azureuser ^
-                        --private-key /root/.ssh/id_rsa ^
-                        --extra-vars "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
+                        sh -c "mkdir -p /root/.ssh && cp /tmp/id_rsa_tmp /root/.ssh/id_rsa && chmod 600 /root/.ssh/id_rsa && ansible-playbook -i /ansible/ansible/inventory.ini /ansible/ansible/deploy.yml -u azureuser --private-key /root/.ssh/id_rsa --extra-vars \\"ansible_ssh_common_args='-o StrictHostKeyChecking=no'\\""
                         """
-                        
                     }
                 }
             }
