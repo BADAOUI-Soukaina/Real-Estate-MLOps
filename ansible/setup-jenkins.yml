@@ -1,0 +1,173 @@
+---
+- name: Installation et configuration de Jenkins
+  hosts: jenkins_server
+  become: yes
+  
+  vars:
+    docker_users:
+      - "{{ ansible_user }}"
+      - jenkins
+  
+  tasks:
+    # ==================== MISE À JOUR SYSTÈME ====================
+    - name: Mettre à jour le cache APT
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    
+    - name: Installer les dépendances de base
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+          - software-properties-common
+          - python3-pip
+          - git
+        state: present
+    
+    # ==================== INSTALLER DOCKER ====================
+    - name: Ajouter la clé GPG de Docker
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+    
+    - name: Ajouter le dépôt Docker
+      apt_repository:
+        repo: "deb [arch=amd64] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
+        state: present
+    
+    - name: Installer Docker
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
+          - docker-compose-plugin
+        state: present
+        update_cache: yes
+    
+    - name: Démarrer et activer Docker
+      systemd:
+        name: docker
+        state: started
+        enabled: yes
+    
+    - name: Ajouter les utilisateurs au groupe docker
+      user:
+        name: "{{ item }}"
+        groups: docker
+        append: yes
+      loop: "{{ docker_users }}"
+    
+    # ==================== INSTALLER JAVA ====================
+    - name: Installer OpenJDK 17 (requis pour Jenkins)
+      apt:
+        name: openjdk-17-jdk
+        state: present
+    
+    # ==================== INSTALLER JENKINS ====================
+    - name: Ajouter la clé GPG de Jenkins
+      apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        state: present
+    
+    - name: Ajouter le dépôt Jenkins
+      apt_repository:
+        repo: "deb https://pkg.jenkins.io/debian-stable binary/"
+        state: present
+    
+    - name: Installer Jenkins
+      apt:
+        name: jenkins
+        state: present
+        update_cache: yes
+    
+    - name: Démarrer et activer Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+    
+    - name: Attendre que Jenkins démarre
+      wait_for:
+        port: 8080
+        delay: 10
+        timeout: 300
+    
+    # ==================== INSTALLER KUBECTL ====================
+    - name: Télécharger kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v1.28.0/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+    
+    # ==================== INSTALLER AZURE CLI ====================
+    - name: Installer Azure CLI
+      shell: |
+        curl -sL https://aka.ms/InstallAzureCLIDeb | bash
+      args:
+        creates: /usr/bin/az
+    
+    # ==================== CONFIGURER KUBECTL POUR JENKINS ====================
+    - name: Créer le dossier .kube pour jenkins
+      file:
+        path: /var/lib/jenkins/.kube
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0755'
+    
+    - name: Créer le dossier .kube pour l'utilisateur
+      file:
+        path: "/home/{{ ansible_user }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+    
+    # ==================== INSTALLER PYTHON PACKAGES ====================
+    - name: Installer les packages Python nécessaires
+      pip:
+        name:
+          - docker
+          - kubernetes
+        state: present
+    
+    # ==================== RÉCUPÉRER LE MOT DE PASSE JENKINS ====================
+    - name: Attendre que le fichier de mot de passe soit créé
+      wait_for:
+        path: /var/lib/jenkins/secrets/initialAdminPassword
+        timeout: 60
+    
+    - name: Récupérer le mot de passe initial de Jenkins
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_password
+      changed_when: false
+    
+    - name: Afficher les informations de connexion
+      debug:
+        msg: |
+          
+          🎉 Jenkins installé avec succès !
+          
+          📋 Informations de connexion:
+          
+          URL: http://{{ ansible_host }}:8080
+          Mot de passe initial: {{ jenkins_password.stdout }}
+          
+          🔐 Prochaines étapes:
+          1. Ouvrir Jenkins dans le navigateur
+          2. Entrer le mot de passe initial
+          3. Installer les plugins suggérés
+          4. Créer un compte admin
+          
+          📝 Configuration AKS:
+          Après la configuration initiale, exécutez sur la VM:
+          az login
+          az aks get-credentials --resource-group Predictive-Real-Estate-Prices --name immobilier-aks-cluster
+          sudo cp ~/.kube/config /var/lib/jenkins/.kube/
+          sudo chown jenkins:jenkins /var/lib/jenkins/.kube/config
