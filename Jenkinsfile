@@ -61,8 +61,8 @@ pipeline {
                         -v "%WORKSPACE%":/ansible ^
                         -v "%SSH_KEY%":/root/.ssh/id_rsa ^
                         willhallonline/ansible:latest ^
-                        ansible-playbook -i ansible/ansible/inventory.ini ansible/ansible/deploy.yml ^
-                        -u azure-vm-ssh-key ^
+                        ansible-playbook -i /ansible/ansible/inventory.ini /ansible/ansible/deploy.yml ^
+                        -u azureuser ^
                         --private-key /root/.ssh/id_rsa ^
                         --extra-vars "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
                         """
