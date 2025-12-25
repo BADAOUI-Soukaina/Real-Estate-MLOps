@@ -4,7 +4,7 @@ pipeline {
     environment {
         DOCKER_USER = 'sgmarwa'
         IMAGE_NAME = 'immobilier-app'
-        AZURE_VM_IP = '20.251.192.87'
+        AZURE_VM_IP = '20.251.223.245 '
         // Identifiants Docker Hub
         DOCKER_HUB_CREDS = credentials('docker-hub-login')
     }
